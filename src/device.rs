@@ -63,7 +63,6 @@ pub struct Device {
 pub struct DeviceState(pub u32);
 
 impl DeviceState {
-	// A device will be in one of these states.
 	pub const ACTIVE: Self = Self(DEVICE_STATE_ACTIVE.0);
 	pub const ANY: Self =
 		Self(Self::ACTIVE.0 | Self::DISABLED.0 | Self::NOT_PRESENT.0 | Self::UNPLUGGED.0);
