@@ -37,7 +37,7 @@ pub struct Devices {
 	collection: IMMDeviceCollection,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Device {
 	name: String,
 	dev: IMMDevice,

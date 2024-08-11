@@ -251,7 +251,14 @@ fn parse_args() -> Args {
 						.map(|n| format!("; {n} Channels"))
 						.unwrap_or_default();
 
-					println!("{name}: {state}{channels}", state = dev.state());
+					let id = dev
+						.id()
+						.ok()
+						.filter(|id| !id.is_null())
+						.and_then(|id| unsafe { id.to_string().ok() })
+						.map_or(String::new(), |id| format!("; ID: {id}"));
+
+					println!("{name}: {state}{channels}{id}", state = dev.state());
 				}
 
 				exit(0);
