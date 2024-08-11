@@ -1,0 +1,26 @@
+[package]
+name = "wol"
+version = "0.1.0"
+edition = "2021"
+
+[profile.release]
+opt-level = 2
+panic = "abort"
+strip = "symbols"
+lto = "fat"
+
+[dependencies]
+derive_more = { version = "1.0.0", features = ["from", "into", "display", "add", "add_assign"] }
+
+[dependencies.windows]
+version = "0.58.0"
+features = [
+	"Win32_Foundation",
+	"Win32",
+	"Win32_Media_Audio_Endpoints",
+	"Win32_System_Com",
+	"Win32_UI_Shell_PropertiesSystem",
+	"Win32_UI_Shell",
+	"Win32_System_Variant",
+	"Win32_Devices_FunctionDiscovery",
+]
