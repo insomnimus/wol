@@ -1,5 +1,6 @@
 use std::{
 	cell::OnceCell,
+	fmt,
 	ptr,
 };
 
@@ -62,6 +63,7 @@ pub struct Device {
 pub struct DeviceState(pub u32);
 
 impl DeviceState {
+	// A device will be in one of these states.
 	pub const ACTIVE: Self = Self(DEVICE_STATE_ACTIVE.0);
 	pub const ANY: Self =
 		Self(Self::ACTIVE.0 | Self::DISABLED.0 | Self::NOT_PRESENT.0 | Self::UNPLUGGED.0);
@@ -71,6 +73,26 @@ impl DeviceState {
 
 	pub const fn has(self, flag: Self) -> bool {
 		self.0 | flag.0 == self.0
+	}
+}
+
+impl fmt::Display for DeviceState {
+	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+		let x = *self;
+		let s = if x == Self::ACTIVE {
+			"Active"
+		} else if x == Self::DISABLED {
+			"Disabled"
+		} else if x == Self::NOT_PRESENT {
+			"Not Present"
+		} else if x == Self::UNPLUGGED {
+			"Unplugged"
+		} else {
+			write!(f, "{x:?}")?;
+			return Ok(());
+		};
+
+		f.write_str(s)
 	}
 }
 
@@ -150,11 +172,11 @@ impl Device {
 		Ok(mm_enum)
 	}
 
-	fn vol(&self) -> Result<&IAudioEndpointVolume> {
+	unsafe fn vol(&self) -> Result<&IAudioEndpointVolume> {
 		if let Some(x) = self.vol.get() {
 			return Ok(x);
 		}
-		let vol = unsafe { self.dev.Activate(CLSCTX_ALL, None)? };
+		let vol = self.dev.Activate(CLSCTX_ALL, None)?;
 		Ok(self.vol.get_or_init(move || vol))
 	}
 }
@@ -168,12 +190,10 @@ impl Device {
 		}
 	}
 
-	pub fn enumerate(state: Option<DeviceState>) -> Result<Devices> {
-		let state = state.unwrap_or(DeviceState::ANY).0;
-
+	pub fn enumerate(state: DeviceState) -> Result<Devices> {
 		unsafe {
 			let enumerator = Self::enumerator()?;
-			let enumerator = enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE(state))?;
+			let enumerator = enumerator.EnumAudioEndpoints(eRender, DEVICE_STATE(state.0))?;
 
 			Ok(Devices {
 				cur: 0,
@@ -185,6 +205,10 @@ impl Device {
 
 	pub fn name(&self) -> &str {
 		&self.name
+	}
+
+	pub fn id(&self) -> Result<PWSTR> {
+		unsafe { self.dev.GetId() }
 	}
 
 	pub fn channels(&self) -> Result<u32> {

@@ -6,21 +6,15 @@ use std::{
 	env,
 	num::IntErrorKind,
 	process::exit,
-	ptr,
 };
 
-use windows::{
-	core::Result as WinResult,
-	Win32::{
-		Media::Audio::{
-			Endpoints::IAudioEndpointVolume,
-			*,
-		},
-		System::Com::*,
+use self::{
+	device::{
+		Device,
+		DeviceState,
 	},
+	error::Result,
 };
-
-use self::error::Result;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -32,6 +26,8 @@ Show or modify the system volume levels
 USAGE: wol [OPTIONS] [ADJUSTMENT...]
 
 OPTIONS:
+  -d, --device=<name>: Specify a device name; the string will be matched as a substring case-insensitively
+  -l, --list: Show a list of audio output devices
   -q, --quiet: After modifications, do not print the new volume levels
   -h, --help: Show help
   -V, --version: Show version information
@@ -64,6 +60,11 @@ ADJUSTMENT:
 	);
 
 	exit(0)
+}
+
+fn err_exit<T: std::fmt::Display, O>(msg: T) -> O {
+	eprintln!("error: {msg}");
+	exit(1);
 }
 
 #[derive(Copy, Clone)]
@@ -167,11 +168,11 @@ impl Adjust {
 		Ok(Self { op, chan, val })
 	}
 
-	unsafe fn apply(self, chan_count: u32, dev: &IAudioEndpointVolume) -> WinResult<()> {
+	fn apply(self, chan_count: u32, dev: &Device) -> Result<()> {
 		let val = match self.val {
 			Value::N(n) => n as f32 / 100.0,
-			Value::MasterChannel => dev.GetMasterVolumeLevelScalar()?,
-			Value::Channel(c) => dev.GetChannelVolumeLevelScalar(c)?,
+			Value::MasterChannel => dev.master_volume()?,
+			Value::Channel(c) => dev.channel_volume(c)?,
 		};
 
 		let new = move |old| match self.op {
@@ -182,17 +183,17 @@ impl Adjust {
 
 		match self.chan {
 			Channel::Master => {
-				let old = dev.GetMasterVolumeLevelScalar()?;
-				dev.SetMasterVolumeLevelScalar(new(old), ptr::null())?;
+				let old = dev.master_volume()?;
+				dev.set_master_volume(new(old))?;
 			}
 			Channel::N(c) => {
-				let old = dev.GetChannelVolumeLevelScalar(c)?;
-				dev.SetChannelVolumeLevelScalar(c, new(old), ptr::null())?;
+				let old = dev.channel_volume(c)?;
+				dev.set_channel_volume(c, new(old))?;
 			}
 			Channel::All => {
 				for c in 0..chan_count {
-					let old = dev.GetChannelVolumeLevelScalar(c)?;
-					dev.SetChannelVolumeLevelScalar(c, new(old), ptr::null())?;
+					let old = dev.channel_volume(c)?;
+					dev.set_channel_volume(c, new(old))?;
 				}
 			}
 		}
@@ -201,16 +202,8 @@ impl Adjust {
 	}
 }
 
-unsafe fn default_output() -> WinResult<IAudioEndpointVolume> {
-	CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok()?;
-	let mm_enum: IMMDeviceEnumerator =
-		CoCreateInstance(&MMDeviceEnumerator as *const _, None, CLSCTX_ALL)?;
-
-	let device = mm_enum.GetDefaultAudioEndpoint(eRender, eConsole)?;
-	device.Activate(CLSCTX_ALL, None)
-}
-
 struct Args {
+	device: Option<String>,
 	quiet: bool,
 	adjusts: Vec<Adjust>,
 }
@@ -220,10 +213,11 @@ fn parse_args() -> Args {
 		.skip(1)
 		.filter(|s| !s.is_empty())
 		.collect::<Vec<_>>();
-	let mut args = args::preprocess(&argv, "");
+	let mut args = args::preprocess(&argv, "d");
 
 	let mut x = Args {
 		quiet: false,
+		device: None,
 		adjusts: Vec::new(),
 	};
 
@@ -247,7 +241,31 @@ fn parse_args() -> Args {
 				println!("wol {VERSION}");
 				exit(0);
 			}
+			"-l" | "--list" => {
+				for dev in Device::enumerate(DeviceState::ACTIVE | DeviceState::DISABLED)
+					.unwrap_or_else(err_exit)
+				{
+					let name = dev.name();
+					let channels = dev
+						.channels()
+						.map(|n| format!("; {n} Channels"))
+						.unwrap_or_default();
+					match dev.state() {
+						Ok(state) => println!("{name}: {state}{channels}"),
+						Err(_) => println!("{name}: Unknown{channels}"),
+					}
+				}
+
+				exit(0);
+			}
 			"-q" | "--quiet" => x.quiet = true,
+			"-d" | "--device" => {
+				x.device = Some(
+					args.next()
+						.unwrap_or_else(|| err_exit("missing a value for -d --device"))
+						.into(),
+				);
+			}
 			_ => {
 				if s.strip_prefix('-')
 					.is_some_and(|rest| !rest.starts_with(|c: char| c.is_ascii_digit()))
@@ -270,16 +288,37 @@ fn parse_args() -> Args {
 	x
 }
 
-unsafe fn run() -> Result<()> {
+fn run() -> Result<()> {
 	let args = parse_args();
 
-	let dev = default_output()?;
-	let chan_count = dev.GetChannelCount()?;
+	let dev = match &args.device {
+		None => Device::get_default()?,
+		Some(name) => {
+			let s = name.to_uppercase();
 
+			let mut devices = Device::enumerate(DeviceState::ACTIVE | DeviceState::DISABLED)?
+				.filter(|d| d.name().to_uppercase().contains(&s))
+				.collect::<Vec<_>>();
+
+			match &*devices {
+				[_] => devices.pop().unwrap(),
+				[] => err_exit(format_args!("no such device: {}", name)),
+				_ => {
+					eprintln!("error: ambiguous device name '{name}'; multiple matches found:");
+					for dev in &devices {
+						eprintln!("{}", dev.name());
+					}
+					exit(1);
+				}
+			}
+		}
+	};
+
+	let chan_count = dev.channels()?;
 	for a in &args.adjusts {
 		if let Channel::N(c) = a.chan {
 			if c >= chan_count {
-				return Err("the device only has {chan_count} channels".into());
+				return Err(format!("the device only has {chan_count} channels").into());
 			}
 		}
 	}
@@ -289,19 +328,19 @@ unsafe fn run() -> Result<()> {
 	}
 
 	if !args.quiet || args.adjusts.is_empty() {
-		let master = dev.GetMasterVolumeLevelScalar()? * 100.0;
+		let master = dev.master_volume()? * 100.0;
 		println!("master: {master:.0}");
 		if chan_count == 2 {
 			println!(
 				"balance: {:.0}/{:.0}",
-				dev.GetChannelVolumeLevelScalar(0)? * 100.0,
-				dev.GetChannelVolumeLevelScalar(1)? * 100.0,
+				dev.channel_volume(0)? * 100.0,
+				dev.channel_volume(1)? * 100.0,
 			);
 		} else {
 			for channel in 0..chan_count {
 				println!(
 					"ch{channel}: {level:.0}",
-					level = dev.GetChannelVolumeLevelScalar(channel)? * 100.0
+					level = dev.channel_volume(channel)? * 100.0
 				);
 			}
 		}
@@ -313,10 +352,8 @@ unsafe fn run() -> Result<()> {
 }
 
 fn main() {
-	unsafe {
-		if let Err(e) = run() {
-			eprintln!("error: {e}");
-			exit(1);
-		}
+	if let Err(e) = run() {
+		eprintln!("error: {e}");
+		exit(1);
 	}
 }
