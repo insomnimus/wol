@@ -18,7 +18,7 @@ use windows::{
 		PWSTR,
 	},
 	Win32::{
-		Devices::FunctionDiscovery::PKEY_Device_FriendlyName,
+		Devices::FunctionDiscovery::*,
 		Media::Audio::{
 			Endpoints::IAudioEndpointVolume,
 			*,
@@ -42,6 +42,7 @@ pub struct Device {
 	name: String,
 	dev: IMMDevice,
 	vol: OnceCell<IAudioEndpointVolume>,
+	state: DeviceState,
 }
 
 #[derive(
@@ -134,6 +135,7 @@ impl Iterator for Devices {
 
 impl Device {
 	unsafe fn new(dev: IMMDevice) -> Result<Self> {
+		let state = DeviceState(dev.GetState()?.0);
 		let vol = OnceCell::new();
 		let props = dev.OpenPropertyStore(STGM_READ)?;
 		let varname = props
@@ -144,6 +146,7 @@ impl Device {
 			return Ok(Self {
 				dev,
 				vol,
+				state,
 				name: String::new(),
 			});
 		}
@@ -153,12 +156,14 @@ impl Device {
 			Ok(Self {
 				dev,
 				vol,
+				state,
 				name: String::new(),
 			})
 		} else {
 			Ok(Self {
 				dev,
 				vol,
+				state,
 				name: String::from_utf16_lossy(name.as_wide()),
 			})
 		}
@@ -202,6 +207,9 @@ impl Device {
 		}
 	}
 
+	/// Get the friendly name of this device.
+	///
+	/// Reads the [PKEY_Device_FriendlyName](https://learn.microsoft.com/en-us/windows/win32/coreaudio/pkey-device-friendlyname) property.
 	pub fn name(&self) -> &str {
 		&self.name
 	}
@@ -233,7 +241,27 @@ impl Device {
 		}
 	}
 
-	pub fn state(&self) -> Result<DeviceState> {
-		Ok(DeviceState(unsafe { self.dev.GetState()?.0 }))
+	pub fn state(&self) -> DeviceState {
+		self.state
+	}
+
+	/// Get the description of this device.
+	///
+	/// Reads the [PKEY_Device_DeviceDesc](https://learn.microsoft.com/en-us/windows/win32/coreaudio/pkey-device-devicedesc) property.
+	pub fn description(&self) -> Result<String> {
+		unsafe {
+			let props = self.dev.OpenPropertyStore(STGM_READ)?;
+			let varname = props.GetValue(&PKEY_Device_DeviceDesc)?.as_raw().Anonymous;
+			if varname.Anonymous.vt == VT_EMPTY.0 {
+				return Ok(String::new());
+			}
+
+			let desc = PWSTR(varname.Anonymous.Anonymous.pwszVal);
+			if desc.is_null() {
+				Ok(String::new())
+			} else {
+				Ok(String::from_utf16_lossy(desc.as_wide()))
+			}
+		}
 	}
 }

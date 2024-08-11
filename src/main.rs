@@ -250,10 +250,8 @@ fn parse_args() -> Args {
 						.channels()
 						.map(|n| format!("; {n} Channels"))
 						.unwrap_or_default();
-					match dev.state() {
-						Ok(state) => println!("{name}: {state}{channels}"),
-						Err(_) => println!("{name}: Unknown{channels}"),
-					}
+
+					println!("{name}: {state}{channels}", state = dev.state());
 				}
 
 				exit(0);
