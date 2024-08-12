@@ -50,7 +50,7 @@ impl<'a> Iterator for Preprocessor<'a> {
 			}
 
 			// Minor optimization to avoid an allocation
-			if flags.chars().count() == 2 {
+			if flags.chars().count() == 1 {
 				return Some(Borrowed(s));
 			}
 
