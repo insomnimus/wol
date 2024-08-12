@@ -249,7 +249,7 @@ impl Device {
 	/// Get the description of this device.
 	///
 	/// Reads the [PKEY_Device_DeviceDesc](https://learn.microsoft.com/en-us/windows/win32/coreaudio/pkey-device-devicedesc) property.
-	pub fn description(&self) -> Result<String> {
+	pub fn _description(&self) -> Result<String> {
 		unsafe {
 			let props = self.dev.OpenPropertyStore(STGM_READ)?;
 			let varname = props.GetValue(&PKEY_Device_DeviceDesc)?.as_raw().Anonymous;
