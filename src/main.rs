@@ -27,6 +27,7 @@ USAGE: wol [OPTIONS] [ADJUSTMENT...]
 
 OPTIONS:
   -d, --device=<name>: Specify a device name; the string will be matched as a substring case-insensitively
+  -i, --id=<id>: Specify a device ID
   -l, --list: Show a list of audio output devices
   -q, --quiet: After modifications, do not print the new volume levels
   -h, --help: Show help
@@ -204,6 +205,7 @@ impl Adjust {
 
 struct Args {
 	device: Option<String>,
+	id: Option<String>,
 	quiet: bool,
 	adjusts: Vec<Adjust>,
 }
@@ -213,10 +215,11 @@ fn parse_args() -> Args {
 		.skip(1)
 		.filter(|s| !s.is_empty())
 		.collect::<Vec<_>>();
-	let mut args = args::preprocess(&argv, "d");
+	let mut args = args::preprocess(&argv, "di");
 
 	let mut x = Args {
 		quiet: false,
+		id: None,
 		device: None,
 		adjusts: Vec::new(),
 	};
@@ -271,6 +274,13 @@ fn parse_args() -> Args {
 						.into(),
 				);
 			}
+			"-i" | "--id" => {
+				x.id = Some(
+					args.next()
+						.unwrap_or_else(|| err_exit("missing a value for -i --id"))
+						.into(),
+				)
+			}
 			_ => {
 				if s.strip_prefix('-')
 					.is_some_and(|rest| !rest.starts_with(|c: char| c.is_ascii_digit()))
@@ -296,9 +306,9 @@ fn parse_args() -> Args {
 fn run() -> Result<()> {
 	let args = parse_args();
 
-	let dev = match &args.device {
-		None => Device::get_default()?,
-		Some(name) => {
+	let dev = match (&args.device, &args.id) {
+		(None, None) => Device::get_default()?,
+		(Some(name), None) => {
 			let s = name.to_uppercase();
 
 			let mut devices = Device::enumerate(DeviceState::ACTIVE | DeviceState::DISABLED)?
@@ -317,6 +327,15 @@ fn run() -> Result<()> {
 				}
 			}
 		}
+		(_, Some(id)) => Device::enumerate(DeviceState::ACTIVE | DeviceState::DISABLED)?
+			.find(|dev| {
+				dev.id()
+					.ok()
+					.filter(|s| !s.is_null())
+					.and_then(|s| unsafe { s.to_string() }.ok())
+					.is_some_and(|s| s.eq_ignore_ascii_case(id))
+			})
+			.ok_or("no active device found with the provided ID")?,
 	};
 
 	let chan_count = dev.channels()?;

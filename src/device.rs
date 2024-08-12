@@ -176,6 +176,7 @@ impl Device {
 		Ok(mm_enum)
 	}
 
+	#[inline]
 	unsafe fn vol(&self) -> Result<&IAudioEndpointVolume> {
 		if let Some(x) = self.vol.get() {
 			return Ok(x);
