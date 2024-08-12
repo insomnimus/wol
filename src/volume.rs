@@ -79,6 +79,14 @@ impl Volume {
 		&self.channels
 	}
 
+	pub fn master_active_db(&self) -> WinResult<f32> {
+		self.dev.master_db()
+	}
+
+	pub fn channel_active_db(&self, channel: u32) -> WinResult<f32> {
+		self.dev.channel_db(channel)
+	}
+
 	pub fn commit(&self, force: bool) -> Result<()> {
 		// Try not to set the volume below 5% for people that use a screen reader.
 		if !force && self.master < self.init_master && self.master < 0.05 {

@@ -366,7 +366,7 @@ fn run() -> Result<()> {
 		vol.commit(args.force)?;
 	}
 
-	if !args.quiet {
+	if !args.quiet && args.dry {
 		println!("master: {:.0}", vol.master() * 100.0);
 
 		match chan_count {
@@ -381,6 +381,47 @@ fn run() -> Result<()> {
 			_ => {
 				for (c, &val) in vol.channels().iter().enumerate() {
 					println!("ch{}: {:.0}", c, val * 100.0);
+				}
+			}
+		}
+	} else if !args.quiet {
+		let db = |f| {
+			let mut s = format!("{f:.2}");
+			while s.ends_with('0') {
+				s.pop();
+			}
+			if s.ends_with('.') {
+				s.pop();
+			}
+			s += "db";
+			s
+		};
+
+		println!(
+			"master: {:.0} [{}]",
+			vol.master() * 100.0,
+			db(vol.master_active_db()?)
+		);
+
+		match chan_count {
+			0 | 1 => (),
+			2 => {
+				println!(
+					"balance: {:.0}/{:.0} [{}/{}]",
+					vol.channel(0) * 100.0,
+					vol.channel(1) * 100.0,
+					db(vol.channel_active_db(0)?),
+					db(vol.channel_active_db(1)?),
+				);
+			}
+			_ => {
+				for (c, &val) in vol.channels().iter().enumerate() {
+					println!(
+						"ch{}: {:.0} [{}]",
+						c,
+						val * 100.0,
+						db(vol.channel_active_db(c as u32)?)
+					);
 				}
 			}
 		}

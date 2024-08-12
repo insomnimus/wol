@@ -227,12 +227,20 @@ impl Device {
 		unsafe { self.vol()?.GetMasterVolumeLevelScalar() }
 	}
 
+	pub fn master_db(&self) -> Result<f32> {
+		unsafe { self.vol()?.GetMasterVolumeLevel() }
+	}
+
 	pub fn set_master_volume(&self, volume: f32) -> Result<()> {
 		unsafe { self.vol()?.SetMasterVolumeLevelScalar(volume, ptr::null()) }
 	}
 
 	pub fn channel_volume(&self, channel: u32) -> Result<f32> {
 		unsafe { self.vol()?.GetChannelVolumeLevelScalar(channel) }
+	}
+
+	pub fn channel_db(&self, channel: u32) -> Result<f32> {
+		unsafe { self.vol()?.GetChannelVolumeLevel(channel) }
 	}
 
 	pub fn set_channel_volume(&self, channel: u32, volume: f32) -> Result<()> {
