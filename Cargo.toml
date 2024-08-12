@@ -4,7 +4,7 @@ version = "0.1.2"
 edition = "2021"
 
 [profile.release]
-opt-level = 2
+opt-level = "s"
 panic = "abort"
 strip = "symbols"
 lto = "fat"
