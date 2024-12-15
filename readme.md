@@ -40,7 +40,7 @@ wol a-10
 # Set channel 3 to have the same level as master
 wol 3=m
 # Set channel 0 (left) to have the same level as channel 5
-wol 1=c5
+wol 0=c5
 
 # Set the master level of a specific audio output
 wol --device speakers 42
