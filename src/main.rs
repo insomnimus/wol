@@ -393,7 +393,7 @@ fn run() -> Result<()> {
 			if s.ends_with('.') {
 				s.pop();
 			}
-			s += "db";
+			s += "dB";
 			s
 		};
 
